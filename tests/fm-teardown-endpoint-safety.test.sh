@@ -1000,6 +1000,81 @@ test_own_and_absent_slot_claims_still_tear_down() {
   pass "fm-teardown: a task's own slot claim, and an unclaimed slot, both still tear down"
 }
 
+# Reproduces the PAYMENTID-3093/3094 incident (observed 2026-09-17): two stale
+# landed records and one live record all name the same reassigned pool slot.
+# The claim proves reassignment before the peer-record scan ever runs, so each
+# stale record's own cleanup completes without the peer-record refusal firing
+# on its still-present siblings, while a record whose slot is genuinely
+# contested by a peer - not proven reassigned by the claim - still refuses, and
+# the live claimant's worker and copy are never touched.
+test_reassigned_slot_with_stale_peer_records_all_close() {
+  local dir id_a=dttot-3093-impl id_b=dttot-3093-review-fixes id_c=dttot-3094-impl worker rc
+
+  dir=$(make_case slot-reassigned-peers)
+  mark_case_as_treehouse_pool "$dir"
+  fm_write_meta "$dir/home/state/$id_a.meta" \
+    "window=firstmate:fm-$id_a" "endpoint_task_id=$id_a" \
+    "worktree=$dir/worktree" "project=$dir/project" "kind=ship"
+  fm_write_meta "$dir/home/state/$id_b.meta" \
+    "window=firstmate:fm-$id_b" "endpoint_task_id=$id_b" \
+    "worktree=$dir/worktree" "project=$dir/project" "kind=ship"
+  fm_write_meta "$dir/home/state/$id_c.meta" \
+    "window=firstmate:fm-$id_c" "endpoint_task_id=$id_c" \
+    "worktree=$dir/worktree" "project=$dir/project" "kind=ship"
+  claim_pool_slot "$dir" "$id_c"
+  # $id_c's own worker is genuinely alive in the slot it claimed.
+  ( cd "$dir/worktree" && exec sleep 30 ) &
+  worker=$!
+
+  # Each stale record ($id_a, $id_b) closes even though the OTHER stale record
+  # still names the same slot: the claim already proves the slot is $id_c's,
+  # so the peer-record scan must not run for either of them.
+  set +e
+  run_case "$dir" "$id_a" > "$dir/stdout-a" 2> "$dir/stderr-a"
+  rc=$?
+  set -e
+  [ "$rc" -eq 0 ] || fail "stale record $id_a with a reassigned-slot claim and a stale peer record failed to close: $(cat "$dir/stderr-a")"
+  assert_absent "$dir/home/state/$id_a.meta" "$id_a's own record was not removed"
+  assert_present "$dir/home/state/$id_b.meta" "$id_a's teardown touched the unrelated peer record $id_b"
+
+  set +e
+  run_case "$dir" "$id_b" > "$dir/stdout-b" 2> "$dir/stderr-b"
+  rc=$?
+  set -e
+  [ "$rc" -eq 0 ] || fail "stale record $id_b with a reassigned-slot claim and a stale peer record failed to close: $(cat "$dir/stderr-b")"
+  assert_absent "$dir/home/state/$id_b.meta" "$id_b's own record was not removed"
+
+  kill -0 "$worker" 2>/dev/null || fail "closing the stale records killed the live claimant's worker"
+  assert_present "$dir/worktree/sentinel" "closing the stale records reset the live claimant's copy"
+  assert_present "$dir/pool/1/.fm-slot-owner" "closing the stale records removed the live claimant's slot claim"
+  assert_contains "$(cat "$dir/pool/1/.fm-slot-owner")" "task=$id_c" \
+    "closing the stale records rewrote the live claimant's slot claim"
+  ! grep -Fq "treehouse <return>" "$dir/runtime.log" \
+    || fail "closing a stale record returned the live claimant's pool slot: $(cat "$dir/runtime.log")"
+
+  # $id_c is the slot's real owner and its own record is the only one left, so
+  # its own eventual teardown still gets ordinary record-exclusivity protection
+  # if another record ever again names its slot without a claim proving why.
+  fm_write_meta "$dir/home/state/spurious-peer.meta" \
+    "window=firstmate:fm-spurious-peer" "endpoint_task_id=spurious-peer" \
+    "worktree=$dir/worktree" "project=$dir/project" "kind=scout"
+  claim_pool_slot "$dir" "$id_c"
+  set +e
+  run_case "$dir" "$id_c" > "$dir/stdout-c" 2> "$dir/stderr-c"
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "the slot's real owner tore down despite an unclaimed peer record naming its own slot"
+  kill -0 "$worker" 2>/dev/null || fail "the peer-record refusal for the slot's real owner still killed its worker"
+  assert_present "$dir/worktree/sentinel" "the peer-record refusal for the slot's real owner still reset its copy"
+  assert_contains "$(cat "$dir/stderr-c")" "spurious-peer" \
+    "the peer-record refusal should still name the contending record"
+
+  kill "$worker" 2>/dev/null || true
+  wait "$worker" 2>/dev/null || true
+
+  pass "fm-teardown: stale records proven reassigned by the slot claim close even with a stale peer record, while an unproven peer collision still refuses"
+}
+
 # The tmux shim used by the endpoint-close tests below: every subcommand
 # reaches the real isolated server, so presence is always read from real tmux.
 # When FM_TEST_BLOCK_KILL is set, `kill-window` alone fails without forwarding,
@@ -1387,6 +1462,7 @@ test_cross_home_pool_slot_collision_refuses
 test_sole_slot_record_still_tears_down
 test_reassigned_pool_slot_finishes_own_cleanup_without_touching_the_slot
 test_own_and_absent_slot_claims_still_tear_down
+test_reassigned_slot_with_stale_peer_records_all_close
 test_recorded_endpoint_that_changed_directory_still_tears_down
 test_project_lock_anchors_at_the_local_root_across_home_layouts
 test_remote_seeded_home_returns_its_uncontested_slot
