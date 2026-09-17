@@ -1058,7 +1058,6 @@ test_reassigned_slot_with_stale_peer_records_all_close() {
   fm_write_meta "$dir/home/state/spurious-peer.meta" \
     "window=firstmate:fm-spurious-peer" "endpoint_task_id=spurious-peer" \
     "worktree=$dir/worktree" "project=$dir/project" "kind=scout"
-  claim_pool_slot "$dir" "$id_c"
   set +e
   run_case "$dir" "$id_c" > "$dir/stdout-c" 2> "$dir/stderr-c"
   rc=$?
