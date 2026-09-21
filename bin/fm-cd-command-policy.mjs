@@ -58,10 +58,13 @@ function normalizePathLexically(path) {
 
 function isNoOpHomeCd(words, commandIndex, home) {
   const targets = words.slice(commandIndex + 1);
-  return targets.length === 1
-    && home
-    && !targets[0].value.startsWith("-")
-    && normalizePathLexically(targets[0].value) === normalizePathLexically(home);
+  let targetIndex = 0;
+  while (targetIndex < targets.length && /^(--|-[LPe@]+)$/.test(targets[targetIndex].value)) {
+    targetIndex += 1;
+  }
+  return home
+    && targets.length === targetIndex + 1
+    && normalizePathLexically(targets[targetIndex].value) === normalizePathLexically(home);
 }
 
 function hasPathQualifiedCommandPrefix(position) {

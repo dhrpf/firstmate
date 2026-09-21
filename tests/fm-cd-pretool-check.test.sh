@@ -145,6 +145,7 @@ matrix_case A36 allow 'command -vp cd'
 matrix_case A37 allow "cd $PRIMARY && cmd"
 matrix_case A38 allow "cd $PRIMARY/ && cmd"
 matrix_case A39 allow "cd $PRIMARY/. && cmd"
+matrix_case A40 allow "cd -- $PRIMARY && cmd"
 matrix_case B28 deny "cd $PRIMARY/projects/foo && cmd"
 matrix_case B29 deny 'cd /somewhere/else && cmd'
 
@@ -373,6 +374,8 @@ test_policy_cli_direct() {
     || fail "policy CLI must allow a subshell-local cd"
   [ "$(node "$policy" --home "$ROOT" --command "cd $ROOT && cmd")" = allow ] \
     || fail "policy CLI must allow a no-op cd to its configured home"
+  [ "$(node "$policy" --home "$ROOT" --command "cd -- $ROOT && cmd")" = allow ] \
+    || fail "policy CLI must allow a no-op cd with -- to its configured home"
   [ "$(node "$policy" --command "cd $ROOT && cmd" | cut -f1)" = deny ] \
     || fail "policy CLI without --home must retain the persistent-cd denial"
   [ "$(node "$policy")" = allow ] \
