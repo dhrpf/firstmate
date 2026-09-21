@@ -17,7 +17,6 @@
 
 import { Lexer, splitProgram, commandPosition } from "./fm-arm-command-policy.mjs";
 import { realpathSync } from "node:fs";
-import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REASONS = {
@@ -51,16 +50,12 @@ function deny(code) {
   return { decision: "deny", code, reason: REASONS[code] };
 }
 
-function normalizePathLexically(path) {
-  const normalized = posix.normalize(path);
-  return normalized.length > 1 && normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
-}
-
 function isNoOpHomeCd(words, commandIndex, home) {
   const targetIndex = words[commandIndex + 1]?.value === "--" ? commandIndex + 2 : commandIndex + 1;
+  const target = words[targetIndex]?.value;
   return home
     && words.length === targetIndex + 1
-    && normalizePathLexically(words[targetIndex].value) === normalizePathLexically(home);
+    && (target === home || target === `${home}/` || target === `${home}/.`);
 }
 
 function hasPathQualifiedCommandPrefix(position) {

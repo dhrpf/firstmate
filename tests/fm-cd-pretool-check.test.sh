@@ -148,7 +148,8 @@ matrix_case A37 allow "cd $PRIMARY && cmd"
 matrix_case A38 allow "cd $PRIMARY/ && cmd"
 matrix_case A39 allow "cd $PRIMARY/. && cmd"
 matrix_case A40 allow "cd -- $PRIMARY && cmd"
-matrix_case B28 deny "cd -P $PRIMARY/physical-escape/.. && cmd"
+matrix_case B28 deny "set -P && cd $PRIMARY/physical-escape/.. && cmd"
+matrix_case B29 deny "cd -P $PRIMARY/physical-escape/.. && cmd"
 matrix_case B29 deny 'cd /somewhere/else && cmd'
 
 MATRIX_TMP=$(mktemp -d "${TMPDIR:-/tmp}/fm-cd-policy-matrix.XXXXXX")
@@ -380,6 +381,8 @@ test_policy_cli_direct() {
     || fail "policy CLI must allow a no-op cd with -- to its configured home"
   [ "$(node "$policy" --home "$ROOT" --command "cd -P $ROOT && cmd" | cut -f1)" = deny ] \
     || fail "policy CLI must retain the denial for physical-mode cd"
+  [ "$(node "$policy" --home "$ROOT" --command "set -P && cd $ROOT/physical-escape/.. && cmd" | cut -f1)" = deny ] \
+    || fail "policy CLI must retain the denial after physical mode is enabled"
   [ "$(node "$policy" --command "cd $ROOT && cmd" | cut -f1)" = deny ] \
     || fail "policy CLI without --home must retain the persistent-cd denial"
   [ "$(node "$policy")" = allow ] \
