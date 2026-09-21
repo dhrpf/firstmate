@@ -147,10 +147,11 @@ matrix_case A36 allow 'command -vp cd'
 matrix_case A37 allow "cd $PRIMARY && cmd"
 matrix_case A38 allow "cd $PRIMARY/ && cmd"
 matrix_case A39 allow "cd $PRIMARY/. && cmd"
-matrix_case A40 allow "cd -- $PRIMARY && cmd"
+matrix_case A40 allow "cd $PRIMARY//./ && cmd"
+matrix_case A41 allow "cd -- $PRIMARY && cmd"
 matrix_case B28 deny "set -P && cd $PRIMARY/physical-escape/.. && cmd"
 matrix_case B29 deny "cd -P $PRIMARY/physical-escape/.. && cmd"
-matrix_case B29 deny 'cd /somewhere/else && cmd'
+matrix_case B30 deny 'cd /somewhere/else && cmd'
 
 MATRIX_TMP=$(mktemp -d "${TMPDIR:-/tmp}/fm-cd-policy-matrix.XXXXXX")
 FM_TEST_CLEANUP_DIRS+=("$MATRIX_TMP")

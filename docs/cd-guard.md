@@ -39,7 +39,7 @@ The discriminator is persistence to the parent shell's cwd, not the mere presenc
 
 The guard **blocks** a `cd`, `pushd`, or `popd` builtin that runs in an executed top-level position in the parent shell, because such a command persistently changes the primary shell's own working directory.
 This covers a bare `cd projects/foo`, `cd ..`, `cd`, `cd -`, an absolute `cd /some/path` (still a persistent relocation of the parent shell), `pushd <dir>`, `popd`, a leading-assignment form such as `X=1 cd foo`, quoted or escaped command-word fragments that cook to a bare builtin, and any list form where the builtin runs in the parent shell (`cd x && cmd`, `cmd; cd x`, `cmd || cd x`, `command cd x`, `command -p cd x`, `command -- cd x`, `builtin cd x`, `command builtin cd x`, `cd x >/dev/null`, and newline-separated lists), except a one-argument `cd` to the configured primary-home root.
-The no-op home carve-out normalizes the target lexically, so the root itself, a trailing slash, doubled slashes, and `/.` are equivalent.
+The no-op home carve-out allows only the root itself plus redundant slashes and `/.`; it rejects parent traversal.
 
 The guard **allows** everything else, including these safe scoped forms that must never be blocked:
 

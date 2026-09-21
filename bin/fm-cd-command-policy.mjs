@@ -53,9 +53,11 @@ function deny(code) {
 function isNoOpHomeCd(words, commandIndex, home) {
   const targetIndex = words[commandIndex + 1]?.value === "--" ? commandIndex + 2 : commandIndex + 1;
   const target = words[targetIndex]?.value;
+  const suffix = target?.startsWith(home) ? target.slice(home.length) : "";
   return home
     && words.length === targetIndex + 1
-    && (target === home || target === `${home}/` || target === `${home}/.`);
+    && target?.startsWith(home)
+    && /^(?:\/+\.?)*$/.test(suffix);
 }
 
 function hasPathQualifiedCommandPrefix(position) {
@@ -128,10 +130,6 @@ function parseArguments(argv) {
       if (i + 1 >= argv.length) throw new Error("--home requires a value");
       result.home = argv[i + 1];
       i += 1;
-      continue;
-    }
-    if (name.startsWith("--home=")) {
-      result.home = name.slice("--home=".length);
       continue;
     }
     throw new Error(`unknown argument: ${name}`);
