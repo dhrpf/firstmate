@@ -62,6 +62,8 @@ make_child_worktree_fixture() {
 }
 
 PRIMARY=$(make_primary_fixture "$TMP_ROOT/primary")
+mkdir "$TMP_ROOT/physical-target"
+ln -s "$TMP_ROOT/physical-target" "$PRIMARY/physical-escape"
 CHECK="$PRIMARY/bin/fm-cd-pretool-check.sh"
 
 # --- full cross-harness acceptance matrix ----------------------------------
@@ -146,7 +148,7 @@ matrix_case A37 allow "cd $PRIMARY && cmd"
 matrix_case A38 allow "cd $PRIMARY/ && cmd"
 matrix_case A39 allow "cd $PRIMARY/. && cmd"
 matrix_case A40 allow "cd -- $PRIMARY && cmd"
-matrix_case B28 deny "cd $PRIMARY/projects/foo && cmd"
+matrix_case B28 deny "cd -P $PRIMARY/physical-escape/.. && cmd"
 matrix_case B29 deny 'cd /somewhere/else && cmd'
 
 MATRIX_TMP=$(mktemp -d "${TMPDIR:-/tmp}/fm-cd-policy-matrix.XXXXXX")
@@ -376,6 +378,8 @@ test_policy_cli_direct() {
     || fail "policy CLI must allow a no-op cd to its configured home"
   [ "$(node "$policy" --home "$ROOT" --command "cd -- $ROOT && cmd")" = allow ] \
     || fail "policy CLI must allow a no-op cd with -- to its configured home"
+  [ "$(node "$policy" --home "$ROOT" --command "cd -P $ROOT && cmd" | cut -f1)" = deny ] \
+    || fail "policy CLI must retain the denial for physical-mode cd"
   [ "$(node "$policy" --command "cd $ROOT && cmd" | cut -f1)" = deny ] \
     || fail "policy CLI without --home must retain the persistent-cd denial"
   [ "$(node "$policy")" = allow ] \
