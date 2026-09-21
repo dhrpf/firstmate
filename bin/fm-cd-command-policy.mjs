@@ -17,6 +17,7 @@
 
 import { Lexer, splitProgram, commandPosition } from "./fm-arm-command-policy.mjs";
 import { realpathSync } from "node:fs";
+import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REASONS = {
@@ -50,6 +51,19 @@ function deny(code) {
   return { decision: "deny", code, reason: REASONS[code] };
 }
 
+function normalizePathLexically(path) {
+  const normalized = posix.normalize(path);
+  return normalized.length > 1 && normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
+}
+
+function isNoOpHomeCd(words, commandIndex, home) {
+  const targets = words.slice(commandIndex + 1);
+  return targets.length === 1
+    && home
+    && !targets[0].value.startsWith("-")
+    && normalizePathLexically(targets[0].value) === normalizePathLexically(home);
+}
+
 function hasPathQualifiedCommandPrefix(position) {
   return position.words
     .slice(position.prefixAssignments, position.index)
@@ -68,7 +82,7 @@ function hasCommandQueryPrefix(position) {
   return false;
 }
 
-function decision(command) {
+function decision(command, home = "") {
   const lexed = new Lexer(command).tokenize();
   // Fail open on syntax this classifier cannot tokenize. The cd-guard's threat
   // model is agent mistakes - an accidental bare `cd projects/foo` always
@@ -94,13 +108,14 @@ function decision(command) {
     if (!command) continue;
     if (!CD_BUILTINS.has(command.value)) continue;
     if (position.wrappers.some((wrapper) => FORKING_WRAPPERS.has(wrapper))) continue;
+    if (command.value === "cd" && isNoOpHomeCd(position.words, wordIndex, home)) continue;
     return deny("persistent-cd");
   }
   return { decision: "allow" };
 }
 
 function parseArguments(argv) {
-  const result = { command: "", commandSet: false };
+  const result = { command: "", commandSet: false, home: "" };
   for (let i = 0; i < argv.length; i += 1) {
     const name = argv[i];
     if (name === "--command") {
@@ -113,6 +128,16 @@ function parseArguments(argv) {
     if (name.startsWith("--command=")) {
       result.command = name.slice("--command=".length);
       result.commandSet = true;
+      continue;
+    }
+    if (name === "--home") {
+      if (i + 1 >= argv.length) throw new Error("--home requires a value");
+      result.home = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (name.startsWith("--home=")) {
+      result.home = name.slice("--home=".length);
       continue;
     }
     throw new Error(`unknown argument: ${name}`);
@@ -137,7 +162,7 @@ if (invokedDirectly()) {
     if (!args.commandSet || !args.command) {
       process.stdout.write("allow\n");
     } else {
-      const result = decision(args.command);
+      const result = decision(args.command, args.home);
       if (result.decision === "allow") {
         process.stdout.write("allow\n");
       } else {

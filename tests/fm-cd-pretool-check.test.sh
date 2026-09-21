@@ -142,6 +142,11 @@ matrix_case A33 allow 'command -v cd'
 matrix_case A34 allow 'command -V cd'
 matrix_case A35 allow 'command -pv cd'
 matrix_case A36 allow 'command -vp cd'
+matrix_case A37 allow "cd $PRIMARY && cmd"
+matrix_case A38 allow "cd $PRIMARY/ && cmd"
+matrix_case A39 allow "cd $PRIMARY/. && cmd"
+matrix_case B28 deny "cd $PRIMARY/projects/foo && cmd"
+matrix_case B29 deny 'cd /somewhere/else && cmd'
 
 MATRIX_TMP=$(mktemp -d "${TMPDIR:-/tmp}/fm-cd-policy-matrix.XXXXXX")
 FM_TEST_CLEANUP_DIRS+=("$MATRIX_TMP")
@@ -366,6 +371,10 @@ test_policy_cli_direct() {
     || fail "policy CLI must allow git -C"
   [ "$(node "$policy" --command '(cd projects/foo && pwd)')" = allow ] \
     || fail "policy CLI must allow a subshell-local cd"
+  [ "$(node "$policy" --home "$ROOT" --command "cd $ROOT && cmd")" = allow ] \
+    || fail "policy CLI must allow a no-op cd to its configured home"
+  [ "$(node "$policy" --command "cd $ROOT && cmd" | cut -f1)" = deny ] \
+    || fail "policy CLI without --home must retain the persistent-cd denial"
   [ "$(node "$policy")" = allow ] \
     || fail "policy CLI must allow when no command is supplied"
   pass "cd-guard: fm-cd-command-policy.mjs CLI honors the deny/allow output contract"
