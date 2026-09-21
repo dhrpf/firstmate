@@ -1,0 +1,30 @@
+SCENARIO: home-noop
+COMMAND: cd /home/didi/.no-mistakes/worktrees/5c9ae2177414/01M32JZHZR4DN0XVKHBK6YWPMA/.live-cd-guard.ho4PF8 && bin/fm-tasks-axi.sh --help
+EXIT: 0
+STDOUT: 
+STDERR: 
+
+SCENARIO: direct-policy-home-noop
+COMMAND: cd /home/didi/.no-mistakes/worktrees/5c9ae2177414/01M32JZHZR4DN0XVKHBK6YWPMA/.live-cd-guard.ho4PF8 && bin/fm-tasks-axi.sh --help
+EXIT: 0
+STDOUT: allow
+
+SCENARIO: home-normalized
+COMMAND: cd /home/didi/.no-mistakes/worktrees/5c9ae2177414/01M32JZHZR4DN0XVKHBK6YWPMA/.live-cd-guard.ho4PF8//./ && bin/fm-tasks-axi.sh --help
+EXIT: 0
+STDOUT: 
+STDERR: 
+
+SCENARIO: project-relocation
+COMMAND: cd /home/didi/.no-mistakes/worktrees/5c9ae2177414/01M32JZHZR4DN0XVKHBK6YWPMA/.live-cd-guard.ho4PF8/projects/clone && bin/fm-tasks-axi.sh --help
+EXIT: 2
+STDOUT: {"decision":"deny","reason":"[persistent-cd] a persistent top-level directory change in the primary firstmate checkout is blocked; it would move the shell out of the home so a later firstmate-owned command runs inside a project clone. Reach the target without moving the shell - use git -C <dir> or an absolute path on the command itself - or scope the cd to a subshell like (cd <dir> && ...)."} 
+STDERR: {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny"},"systemMessage":"[persistent-cd] a persistent top-level directory change in the primary firstmate checkout is blocked; it would move the shell out of the home so a later firstmate-owned command runs inside a project clone. Reach the target without moving the shell - use git -C <dir> or an absolute path on the command itself - or scope the cd to a subshell like (cd <dir> && ...)."} 
+
+SCENARIO: physical-traversal
+COMMAND: set -P && cd /home/didi/.no-mistakes/worktrees/5c9ae2177414/01M32JZHZR4DN0XVKHBK6YWPMA/.live-cd-guard.ho4PF8/physical-escape/.. && bin/fm-tasks-axi.sh --help
+EXIT: 2
+STDOUT: {"decision":"deny","reason":"[persistent-cd] a persistent top-level directory change in the primary firstmate checkout is blocked; it would move the shell out of the home so a later firstmate-owned command runs inside a project clone. Reach the target without moving the shell - use git -C <dir> or an absolute path on the command itself - or scope the cd to a subshell like (cd <dir> && ...)."} 
+STDERR: {"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny"},"systemMessage":"[persistent-cd] a persistent top-level directory change in the primary firstmate checkout is blocked; it would move the shell out of the home so a later firstmate-owned command runs inside a project clone. Reach the target without moving the shell - use git -C <dir> or an absolute path on the command itself - or scope the cd to a subshell like (cd <dir> && ...)."} 
+
+Fixture was a fresh plain git primary shape; all commands drove the production PreToolUse transport through stdin JSON.
