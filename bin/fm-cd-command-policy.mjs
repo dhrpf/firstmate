@@ -50,6 +50,16 @@ function deny(code) {
   return { decision: "deny", code, reason: REASONS[code] };
 }
 
+function isNoOpHomeCd(words, commandIndex, home) {
+  const targetIndex = words[commandIndex + 1]?.value === "--" ? commandIndex + 2 : commandIndex + 1;
+  const target = words[targetIndex]?.value;
+  const suffix = target?.startsWith(home) ? target.slice(home.length) : "";
+  return home
+    && words.length === targetIndex + 1
+    && target?.startsWith(home)
+    && /^(?:\/+\.?)*$/.test(suffix);
+}
+
 function hasPathQualifiedCommandPrefix(position) {
   return position.words
     .slice(position.prefixAssignments, position.index)
@@ -68,7 +78,7 @@ function hasCommandQueryPrefix(position) {
   return false;
 }
 
-function decision(command) {
+function decision(command, home = "") {
   const lexed = new Lexer(command).tokenize();
   // Fail open on syntax this classifier cannot tokenize. The cd-guard's threat
   // model is agent mistakes - an accidental bare `cd projects/foo` always
@@ -94,13 +104,14 @@ function decision(command) {
     if (!command) continue;
     if (!CD_BUILTINS.has(command.value)) continue;
     if (position.wrappers.some((wrapper) => FORKING_WRAPPERS.has(wrapper))) continue;
+    if (command.value === "cd" && isNoOpHomeCd(position.words, wordIndex, home)) continue;
     return deny("persistent-cd");
   }
   return { decision: "allow" };
 }
 
 function parseArguments(argv) {
-  const result = { command: "", commandSet: false };
+  const result = { command: "", commandSet: false, home: "" };
   for (let i = 0; i < argv.length; i += 1) {
     const name = argv[i];
     if (name === "--command") {
@@ -113,6 +124,12 @@ function parseArguments(argv) {
     if (name.startsWith("--command=")) {
       result.command = name.slice("--command=".length);
       result.commandSet = true;
+      continue;
+    }
+    if (name === "--home") {
+      if (i + 1 >= argv.length) throw new Error("--home requires a value");
+      result.home = argv[i + 1];
+      i += 1;
       continue;
     }
     throw new Error(`unknown argument: ${name}`);
@@ -137,7 +154,7 @@ if (invokedDirectly()) {
     if (!args.commandSet || !args.command) {
       process.stdout.write("allow\n");
     } else {
-      const result = decision(args.command);
+      const result = decision(args.command, args.home);
       if (result.decision === "allow") {
         process.stdout.write("allow\n");
       } else {
