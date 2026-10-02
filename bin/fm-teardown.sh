@@ -95,18 +95,29 @@
 # name a slot a DIFFERENT live task now holds. Cleanup kills every process under
 # that path and hard-resets it before returning it, so releasing a slot that is
 # not genuinely this task's destroys another worker's live work. Before the first
-# cleanup step, teardown reads the slot's own owner claim, written by
-# bin/fm-spawn.sh at the moment the slot is taken and dropped here once it is
-# genuinely returned; bin/fm-wake-lib.sh owns the claim, its location, and its
-# states. A claim naming another task is proof of reassignment: the slot is no
-# longer this task's, so teardown warns, names the claimant, and then finishes
-# only this task's own cleanup - endpoint, status, records, checks, backlog -
-# while every step that would read or touch that slot is skipped: no process
-# kill under it, no dirty or landed-work inspection of it, no branch or hook
-# removal in it, no Treehouse return, no record-exclusivity scan, and never the
-# other task's claim. Skipping those discards nothing of this task's: whatever
-# unlanded work it had in that slot was already destroyed when the pool handed
-# the slot on. Refusing instead would strand the record, because
+# cleanup step, teardown verifies record exclusivity: no OTHER task record in
+# this home or any locally registered Firstmate home may name the same live path
+# in its worktree= or home=. One live path with two task records is the reuse
+# collision itself, whichever record is stale. The one exception is a slot whose
+# owner claim (below) names another task: this teardown is then records-only and
+# touches nothing under the slot, so the scan is skipped rather than stranding
+# the stale record and, with it, the claimant's own teardown.
+# That scan alone cannot prove THIS record is the current owner, because the task
+# that took the slot next may leave no record it can reach - its own worker may
+# have exited and its record been cleaned up, or it may live in a home this
+# machine does not register - which is how a released-then-reassigned slot was
+# returned out from under a live worker (observed 2026-09-07). So teardown also
+# reads the slot's own owner claim, written by bin/fm-spawn.sh at the moment the
+# slot is taken and dropped here once it is genuinely returned; bin/fm-wake-lib.sh
+# owns the claim, its location, and its states. A claim naming another task is
+# proof of reassignment: the slot is no longer this task's, so teardown warns,
+# names the claimant, and then finishes only this task's own cleanup - endpoint,
+# status, records, checks, backlog - while every step that would read or touch
+# that slot is skipped: no process kill under it, no dirty or landed-work
+# inspection of it, no branch or hook removal in it, no Treehouse return, and
+# never the other task's claim. Skipping the inspection discards nothing of this
+# task's: whatever unlanded work it had in that slot was already destroyed when
+# the pool handed the slot on. Refusing instead would strand the record, because
 # bin/fm-backend.sh's endpoint validation refuses an empty or missing worktree=
 # unconditionally, so there is no line an operator could clear to get past it.
 # A claim that cannot be read proves nothing either way and refuses; inspect or
@@ -2360,6 +2371,12 @@ require_exclusive_worktree_slot_record() {
   local record_meta=$1 record_id=$2 record_state=$3 worktree=$4
   local slot state_dir other other_id field other_path other_slot
   slot=$(canonical_existing_dir "$worktree") || return 0
+  # A slot whose owner claim names another task was reassigned, so this record's
+  # teardown is records-only and touches nothing under it; another record naming
+  # the slot is then no hazard, and refusing would strand this stale record and
+  # block the claimant's own teardown behind it.
+  fm_treehouse_slot_owner_state "$slot" "$record_id"
+  [ "$FM_TREEHOUSE_SLOT_OWNER" != other ] || return 0
   collect_local_firstmate_states "$record_state" || return 1
   for state_dir in "${TREEHOUSE_OWNER_STATES[@]}"; do
     for other in "$state_dir"/*.meta; do
