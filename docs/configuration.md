@@ -1203,7 +1203,7 @@ muse also needs a worker-reachable credential before spawning, and the portable 
 gemini is likewise refused for secondmates because it has no primary supervision protocol; [its adapter reference](../.agents/skills/harness-adapters/references/harness/gemini.md) owns the credential precondition, canonical-launch wiring, and raw-launch limitations.
 rovo is likewise verified for crewmate and scout launches ONLY, refused for a secondmate for the same reason - no turn-end hook and no primary supervision protocol; [`docs/verification/rovo.md`](verification/rovo.md) owns that evidence, including the OAuth token's silent background refresh from a stored refresh token and both tmux and herdr pane liveness (herdr placement is verified live, with a Herdr-side agent-detection gap left open for recovery classification).
 
-agy is likewise verified for crewmate and scout launches ONLY, refused for a secondmate for the same reason - no hook surface and no primary supervision protocol; [`docs/verification/agy.md`](verification/agy.md) owns that evidence, including the spawn-time worktree trust pre-registration through `bin/fm-agy-trust.sh` and Herdr's native agy pane recognition.
+An agy secondmate or primary runs the tracked project-scope `.agents/hooks.json` in its own home, and `bin/fm-spawn.sh` pre-registers a secondmate home in agy's workspace trust store through `bin/fm-agy-trust.sh`; [`docs/supervision-protocols/agy.md`](supervision-protocols/agy.md) owns its supervision protocol and [`docs/verification/agy.md`](verification/agy.md) owns the evidence.
 devin is verified for crewmate and scout launches only; a secondmate is refused because Devin has no verified primary supervision protocol.
 
 Its private worker config disables Claude Code imports (including the captain's hooks) and, unless the home sets `config/keep-ai-trailers` (see "Commit attribution"), Devin commit attribution without editing user or project config; [`fm-devin-config.sh`](../bin/fm-devin-config.sh) owns these enforced settings and [Devin verification](verification/devin.md) owns the live evidence and observed model availability.
@@ -1721,6 +1721,7 @@ This section is the single owner of the canonical schema and its per-field seman
 ```json
 {
   "preferred_provider": "<optional quota-axi provider family to spend first>",
+  "shared_quota": false,
   "rules": [
     {
       "when": "<natural-language condition describing a kind of task>",
@@ -1749,6 +1750,7 @@ This section is the single owner of the canonical schema and its per-field seman
 | Profile `harness` | Required in every profile. |
 | Profile `model` and `effort`; rule `why` | Optional. |
 | Top-level `preferred_provider` | Optional provider-family preference, applied after eligibility checks under `quota-array-dispatch`. |
+| Top-level `shared_quota` | Optional; see "Shared-quota opt-out" below. |
 
 **Preferred provider**
 
@@ -1758,6 +1760,15 @@ Both bootstrap and the enabled resolver reject malformed values, including null,
 Bootstrap validates this field even without a resolver key because the agent-owned intake also honors it.
 An absent field preserves the existing routing behavior.
 The [profile-array procedure](../.agents/skills/quota-array-dispatch/SKILL.md#rank-by-spendpriority) owns family preference, uncertainty, and fallback after the existing gates.
+
+**Shared-quota opt-out**
+
+An optional top-level `"shared_quota": true` declares this home draws every provider's usage from one single shared budget, such as one workplace AI spend line, so per-provider quota rows do not describe what is left.
+With it set, typed dispatch resolution makes no `quota-axi` call, applies no quota floor or runway gate, ranks nothing by `spendPriority`, and resolves the matched rule's `use` profiles in declared order; every candidate line still prints, stating quota ranking is off by home declaration.
+`preferred_provider` is a separate home preference, not a quota signal, so it still applies: `preferred_provider` still narrows the pool; declared order then picks within it.
+Firstmate's own `quota-array-dispatch` intake honors the same declaration.
+Without the setting, or with `"shared_quota": false`, behavior is unchanged.
+The declared value must be a boolean; anything else is an actionable configuration error reported like any other malformed rule.
 
 **Fields applied only by typed resolution**
 
@@ -1815,9 +1826,10 @@ See [`docs/examples/crew-dispatch.json`](examples/crew-dispatch.json) for a star
 - When the file exists, bootstrap validates it with `jq`.
 - Valid files stay silent by default; with `FM_BOOTSTRAP_VERBOSE_FACTS=1`, bootstrap emits `BOOTSTRAP_INFO: crew dispatch active config/crew-dispatch.json`, one `BOOTSTRAP_INFO:` fact per rule, and one fact for the optional default profile set.
 - Malformed JSON, malformed rules, an empty or malformed profile array, a malformed `preferred_provider`, an unverified harness, or an effort value unsupported by that harness is reported as `CREW_DISPATCH: invalid config/crew-dispatch.json - ...`.
-- Bootstrap enables resolver-only checks for `approval`, `min_confidence`, `floor`, and present `provider` declarations when `TYPESAFE_API_KEY` is non-empty in the environment or the home's `.env`, regardless of `FM_DISPATCH_PROVIDER`.
-  An OpenRouter key alone does not enable these bootstrap checks; the resolver validates those declarations itself before any request.
-  Without a typesafe key, bootstrap retains its pre-existing verified-harness baseline.
+- Bootstrap enables resolver-only checks for `approval`, `min_confidence`, `floor`, and present `provider` declarations when `TYPESAFE_API_KEY` is non-empty in the environment or the home's `.env`, or when the home's valid `config/dispatch-credential-sources.json` names a `typesafe` source, regardless of `FM_DISPATCH_PROVIDER`.
+  Bootstrap only checks that declaration; it never reads the key or runs the source's tool.
+  An OpenRouter key or OpenRouter declaration alone does not enable these bootstrap checks; the resolver validates those declarations itself before any request.
+  Without a typesafe key or a declared typesafe source, bootstrap retains its pre-existing verified-harness baseline.
 - Missing `jq` is reported through the normal `MISSING: jq` install-consent flow.
 - While the file remains present, no crewmate or scout spawn may proceed without an explicit resolved harness; malformed configuration must be reported and corrected rather than selected around.
 
@@ -1827,15 +1839,17 @@ Secondmate homes inherit this file from the primary, so a secondmate's own crewm
 
 ## Typed dispatch resolution (.env FM_DISPATCH_PROVIDER, FM_DISPATCH_MODEL)
 
-`bin/fm-dispatch-resolve.sh` resolves one concrete crewmate or scout profile from a written brief through typesafe.ai or OpenRouter, so the rule match that firstmate otherwise reasons out in its own context becomes one short tool turn.
-`FM_DISPATCH_PROVIDER` selects `typesafe` or `openrouter`, and `FM_DISPATCH_MODEL` selects the model.
+`bin/fm-dispatch-resolve.sh` resolves one concrete crewmate or scout profile from a written brief through typesafe.ai, OpenRouter, any System One-compatible host, or OpenAI, so the rule match that firstmate otherwise reasons out in its own context becomes one short tool turn.
+`FM_DISPATCH_PROVIDER` selects `typesafe`, `openrouter`, `systemone`, or `openai`, and `FM_DISPATCH_MODEL` selects the model.
 Each setting comes from the calling environment or the home's gitignored `.env` through `bin/fm-env-lib.sh`; a non-empty environment value wins.
-OpenRouter requires both `FM_DISPATCH_PROVIDER=openrouter` and a non-empty `FM_DISPATCH_MODEL`; an omitted model is an actionable configuration error, and the presence of an OpenRouter key never selects the provider by itself.
-With no provider setting, the original typesafe.ai behavior is unchanged: `jev-latest` is used when `TYPESAFE_API_KEY` is available, `FM_DISPATCH_MODEL` is ignored, and the resolver is off otherwise.
+OpenRouter, `systemone`, and OpenAI each require their explicit `FM_DISPATCH_PROVIDER` value and a non-empty `FM_DISPATCH_MODEL`; an omitted model is an actionable configuration error, and the presence of a provider's key never selects that provider by itself.
+`systemone` also requires `FM_DISPATCH_BASE_URL`, an `http://` or `https://` base such as a local llama.cpp server or a hosted System One-compatible service, and posts to `<base>/v1/systemone`; a missing or scheme-less base URL is an actionable configuration error.
+With no provider setting, the original typesafe.ai behavior is unchanged: `jev-latest` is used when `TYPESAFE_API_KEY` is available, `FM_DISPATCH_MODEL` is ignored, and the resolver is off when no key is available and no `typesafe` credential source is declared.
 Explicit `FM_DISPATCH_PROVIDER=typesafe` also uses `jev-latest` when no model is set.
-The selected provider's key must be non-empty in the environment or `.env`, with the environment taking precedence.
+The selected provider needs a non-empty key from the environment, else `.env`, else, for `typesafe` and `openrouter` only, the credential source the home declares for that provider; `systemone` is the exception, where an absent `FM_DISPATCH_API_KEY` means the request carries no `Authorization` header.
 
 Off means one `dispatch-resolve: off` line on stderr, nothing on stdout, exit 0, and no network call, so firstmate dispatches exactly as it does without the tool.
+A declared credential source that cannot supply its key is not off; see "Credential source declaration" below.
 This section is the single owner of the tool's operator contract; the script header owns its exact flags and output lines, and "Crew dispatch profiles" above owns the declared top-level, rule, and profile fields it applies.
 
 Rules come only from the effective home's `config/crew-dispatch.json`; `FM_CONFIG_OVERRIDE` selects the config directory for tests and specialized setup like the other scripts.
@@ -1851,7 +1865,9 @@ Firstmate invokes the resolve path directly after writing the brief, without a p
 **What the model receives**
 
 When on and at least one rule exists, the tool sends the project name and the brief's task-specific text as state and asks one Choice question whose options are every rule's `when` plus the fixed neutral option for no matching rule; the model never sees quota, catalogs, `why`, `use`, approvals, or confidence floors.
-OpenRouter's Decisions API accepts the same Choice request shape and returns the same typed answer, including confidence and a probability per option; both providers use the same response validation and post-model gates.
+OpenRouter's Decisions API and a `systemone` host accept the same Choice request shape and return the same typed answer, including confidence and a probability per option.
+For OpenAI's Decisions API the resolver rewrites that request into OpenAI's shape - the state as JSON text `input` and one `choice` question named `rule` whose `choices` are the same options - and maps the answer's per-option probability array back; a refusal, a missing or duplicated rule answer, or duplicated option values is rejected as malformed.
+Every provider then uses the same response validation and post-model gates.
 The task-specific text is the brief's `## Captain's intent` and `## Firstmate spec` sections under `# Task` that `bin/fm-brief.sh` scaffolds, read by the same parser that feeds `fm-spawn.sh` validation and the no-mistakes `--intent` contract; a brief with neither section is sent whole.
 
 When the sections are sent from a scout brief, the line `Brief kind: scout (report only)` comes first, taken from the scaffold's scout contract line; ship briefs and briefs sent whole get no kind line.
@@ -1873,7 +1889,7 @@ Every entry is trimmed of surrounding whitespace, and any run of whitespace, in 
 Example Client Ltd
 ```
 
-Before the request is sent, every string in it is checked, including the selected model, the project name, the task text, each rule's `when`, and the fixed question text.
+Before the request is sent, the endpoint URL and every string in the final provider-specific request body are checked, including strings inside JSON text such as OpenAI's `input`: the selected model, the project name, the task text, each rule's `when`, and the fixed question text.
 A match stops the request: the resolver behaves exactly as when it is off, printing one `dispatch-resolve: off (...; nothing sent)` line on stderr and nothing on stdout, making no network or quota call, and exiting 0, so firstmate dispatches through its existing intake.
 A list that is present but not a readable regular file also stops the request the same way rather than sending unchecked text.
 That one diagnostic names the list line number at most and never prints the listed value or the matching text.
@@ -1891,6 +1907,7 @@ After the answer, code applies all remaining checks and ranking:
 - Every applicable account-wide and model/product row from one `quota-axi --json` snapshot.
 - The optional `preferred_provider` restriction under the [profile-array procedure](../.agents/skills/quota-array-dispatch/SKILL.md#rank-by-spendpriority).
 - The numeric `spendPriority` argmax within that candidate pool, using each candidate's limiting row.
+- With the home's `shared_quota: true` declaration ("Crew dispatch profiles"), the quota snapshot, floors, runway gates, and `spendPriority` argmax are skipped entirely; resolution is the matched rule's declared profile order (`preferred_provider` still narrows the pool; declared order then picks within it).
 
 The resolver prints its preferred-family decision while retaining evidence for every candidate.
 If preferred candidates remain eligible but none is rankable, it escalates instead of selecting another family.
@@ -1926,12 +1943,12 @@ No qualifying option, or two equally probable qualifying options, produces `ambi
 | `clear` | A `profile:` line ready for `fm-spawn.sh`. |
 | `ambiguous` | Confidence below the floor with no runner-up taken. |
 | `escalate` | An approval-gated rule, unverifiable rule floor, nothing rankable, or a genuine tie. |
-| `error` | API, network, malformed response metadata, rendering, or quota-axi failure. |
+| `error` | API, network, malformed response metadata, rendering, quota-axi failure, or a declared credential source that cannot supply its key. |
 
 Every result above exits 0.
 
 - Response probabilities must contain exactly every offered choice, use numeric values from 0 through 1, and sum to approximately 1 within 0.01.
-- Only a usage or configuration error exits 2: an unreadable brief, an existing but unreadable or malformed canonical rules file, a missing `jq`, an unknown provider, or an OpenRouter provider without a model, each reported and never selected around.
+- Only a usage or configuration error exits 2: an unreadable brief, an existing but unreadable or malformed canonical rules file, an unreadable or invalid credential source declaration, a missing `jq`, an unknown provider, a non-typesafe provider without a model, or `systemone` without a valid base URL, each reported and never selected around.
 - Missing `curl` is a normal structured `error` outcome with exit 0 so firstmate uses today's routing.
 
 **Firstmate retains the dispatch decision**
@@ -1943,12 +1960,61 @@ Explicit captain overrides retain precedence over the resolver's suggestion.
 
 Firstmate passes its profile line unless it states a reason to override, such as the brief's reasoning class or an eligible-unranked-candidate note; every non-clear result returns to the full existing intake.
 
+**Credential source declaration (config/dispatch-credential-sources.json)**
+
+The optional local, gitignored `config/dispatch-credential-sources.json` tells the resolver where a provider's key lives when neither the environment nor `.env` supplies one.
+It names a source and never holds a key.
+It is read from the effective config directory, which is `FM_CONFIG_OVERRIDE` when set and `$FM_HOME/config` otherwise, so each home reads only its own file.
+It is not among the settings `bin/fm-config-inherit-lib.sh` propagates, so a secondmate home that wants a declared source keeps its own file.
+A home without the file behaves exactly as it did before the file existed.
+It covers the `typesafe` and `openrouter` keys only; the `systemone` and OpenAI keys still come from the environment or `.env`.
+
+The file is one JSON object keyed by provider, `typesafe` or `openrouter`, and each value says where that provider's key is:
+
+```json
+{
+  "typesafe": { "source": "macos-keychain", "service": "typesafe-api-key", "account": "me" }
+}
+```
+
+`source` is required and names the adapter, and `macos-keychain` is the first.
+It requires `service`, accepts an optional `account`, and reads that generic-password item with `security find-generic-password -s <service> [-a <account>] -w`.
+Store the item with `security add-generic-password -s <service> [-a <account>] -w`, which prompts for the key and lets `security` read it back without an access dialog.
+Only the service and account reach `security`'s argument list, and the key comes back on a pipe.
+No other field is accepted, so the file has nowhere to put a key.
+`bin/fm-credential-source-lib.sh` owns the schema and the adapters, so a further source adds an adapter there rather than a special case in the resolver.
+
+The resolver reads the file only after the environment and `.env` have supplied no key for the selected provider, and it uses only that provider's entry.
+A declaration for one provider never feeds another provider and never selects a provider.
+Three outcomes stay distinct:
+
+- **Off.** No entry for the selected provider and no key keeps today's behavior: the `dispatch-resolve: off` line, nothing on stdout, and exit 0.
+- **Configuration error.** An unreadable file, malformed JSON, an unknown provider, an unknown or missing field, or a value that is not a plain non-empty string exits 2 with one line that names the problem.
+  The check covers the whole file, so an invalid entry for a provider that is not selected also exits 2.
+  The line names providers and fields and never prints a declared value.
+- **Unavailable source.** An entry whose source this host cannot run, or that yields no key, ends as the `error` outcome with exit 0 and a reason ending `nothing sent`, and makes no network or quota call.
+  The reason says whether the host cannot run the source, the source holds no readable key, or it did not answer in time, and it never relays the tool's own output.
+  A source that does not answer within 5 seconds ends the same way, so an unanswered Keychain access prompt cannot hold an intake.
+
+A configuration installer can check a source before it writes anything:
+
+```sh
+bin/fm-dispatch-resolve.sh --supports-credential-source macos-keychain
+```
+
+The probe prints `supported` and exits 0, or prints `unsupported` and exits 1, for a source name on the host it runs on.
+`unsupported` covers an unknown name, a host the adapter does not run on, and a missing tool.
+The probe reads no declaration and no credential and runs no credential tool.
+An installer should treat any status other than 0 as a refusal, because a resolver that predates the probe rejects the flag with exit 2.
+
 **Key handling and provider settings**
 
-- The resolver copies either environment-provided key into a non-exported private variable and unsets both `TYPESAFE_API_KEY` and `OPENROUTER_API_KEY` before launching child processes; bootstrap also protects the typesafe key.
-- The resolver sends only the selected key to `curl` as a header read from a file descriptor, never on argv, and never prints, logs, or writes either key.
-- The typesafe.ai endpoint is `https://api.typesafe.ai/v1/systemone`, and the OpenRouter endpoint is `https://openrouter.ai/api/alpha/decisions`.
-- The default confidence floor remains 0.6; request timeouts are 5 seconds for typesafe.ai and 10 seconds for OpenRouter.
+- The resolver copies every environment-provided key into a non-exported private variable and unsets `TYPESAFE_API_KEY`, `OPENROUTER_API_KEY`, `OPENAI_API_KEY`, and `FM_DISPATCH_API_KEY` before launching child processes; bootstrap also protects the typesafe key.
+- A key read from a declared source is captured into the same private variable, so it is never exported either.
+- The resolver sends only the selected key to `curl` as a header read from a file descriptor, never on argv, and never prints, logs, or writes any key.
+- The typesafe.ai endpoint is `https://api.typesafe.ai/v1/systemone`, the OpenRouter endpoint is `https://openrouter.ai/api/alpha/decisions`, the OpenAI endpoint is `https://api.openai.com/v1/decisions`, and the `systemone` endpoint is `<FM_DISPATCH_BASE_URL>/v1/systemone`.
+- The default confidence floor remains 0.6; request timeouts are 5 seconds for typesafe.ai and 10 seconds for OpenRouter, `systemone`, and OpenAI.
+- A CPU-only local `systemone` host may not answer within its 10-second timeout; that is an ordinary `error` outcome, and firstmate keeps its existing intake.
 
 The recommended OpenRouter model is `typesafe/jev-1.13` because it is built for fast typed choices and supplies native per-option probabilities without generated text.
 The dated model catalog observation is recorded in [dispatch verification](verification/dispatch-resolve.md#the-api-the-tool-depends-on).
@@ -1957,6 +2023,14 @@ The resolver never chooses this model automatically; use these settings in the c
 ```dotenv
 FM_DISPATCH_PROVIDER=openrouter
 FM_DISPATCH_MODEL=typesafe/jev-1.13
+```
+
+A `systemone` or OpenAI setup names its model the same way; the resolver never picks one for them:
+
+```dotenv
+FM_DISPATCH_PROVIDER=systemone
+FM_DISPATCH_MODEL=<model the host serves>
+FM_DISPATCH_BASE_URL=http://127.0.0.1:8080
 ```
 
 The live rule-match evidence is recorded in [`verification/dispatch-resolve.md`](verification/dispatch-resolve.md).
@@ -3177,10 +3251,13 @@ FMX_RELAY_URL=https://myfirstmate.io   # optional Relay endpoint override, mainl
 FMX_ENV_FILE=           # optional alternate .env file for direct Relay client invocations; bootstrap still checks $FM_HOME/.env
 FMX_DRY_RUN=            # truthy previews Relay replies and dismissals to state/x-outbox/ without posting or requiring a token
 FMX_X_REPLY_MAX_CHARS=280   # X reply per-message split budget; values below 50 clamp to 50
-FM_DISPATCH_PROVIDER=   # typesafe or openrouter; absent preserves the original typesafe key gate ("Typed dispatch resolution")
-FM_DISPATCH_MODEL=      # explicit model for the selected provider; required for openrouter
-TYPESAFE_API_KEY=       # typesafe dispatch key, from the environment or .env
-OPENROUTER_API_KEY=     # OpenRouter dispatch key, from the environment or .env
+FM_DISPATCH_PROVIDER=   # typesafe, openrouter, systemone, or openai; absent preserves the original typesafe key gate ("Typed dispatch resolution")
+FM_DISPATCH_MODEL=      # explicit model for the selected provider; required for openrouter, systemone, and openai
+FM_DISPATCH_BASE_URL=   # http(s) base of a System One-compatible host; required for systemone
+FM_DISPATCH_API_KEY=    # optional systemone key; absent sends no Authorization header
+TYPESAFE_API_KEY=       # typesafe dispatch key, from the environment, .env, or the declared credential source ("Typed dispatch resolution")
+OPENROUTER_API_KEY=     # OpenRouter dispatch key, from the environment, .env, or the declared credential source
+OPENAI_API_KEY=         # OpenAI dispatch key, from the environment or .env
 FMX_DISCORD_REPLY_MAX_CHARS=1900   # Discord reply per-message split budget; values below 50 clamp to 50, values above 2000 reset to 1900
 FMX_X_THREAD_MAX=25     # maximum messages in one auto-split reply thread
 FMX_FOLLOWUP_MAX_AGE_SECS=604800   # local window for posting Relay completion follow-ups (7 days)
