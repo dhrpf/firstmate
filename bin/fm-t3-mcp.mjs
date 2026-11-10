@@ -167,12 +167,10 @@ export const REQUIRED_TOOLS = [
   "t3_thread_interrupt",
   "t3_thread_organize",
   "t3_thread_list",
-  "t3_thread_configuration",
+  "t3_thread_configure",
   "t3_project_list",
   "t3_project_create",
-  "t3_pending_request_list",
-  "t3_pending_request_read",
-  "t3_pending_request_respond",
+  "t3_pending_request",
   "orchestrator_capabilities",
 ];
 const ENVIRONMENT_TOOL = "t3_environment_read";
@@ -874,7 +872,7 @@ async function launch(flags) {
   let config;
   try {
     t = threadOf(await session.call("t3_thread_read", { threadId: out.threadId, limit: 1, runLimit: 1 }));
-    config = await session.call("t3_thread_configuration", { threadId: out.threadId });
+    config = await session.call("t3_thread_configure", { threadId: out.threadId });
   } catch (e) {
     const archived = await archiveLaunched();
     throw new Refusal(
@@ -1045,7 +1043,7 @@ function threadOf(out) {
 async function pendingOf(session, threadId, t) {
   const count = t.pendingRequestCount ?? 0;
   if (!count) return { questions: [], approvals: 0, approvalIds: [] };
-  const listed = await session.call("t3_pending_request_list", { threadId });
+  const listed = await session.call("t3_pending_request", { action: "list", threadId });
   const ids = [...new Set(listed?.requestIds ?? [])].sort();
   const approvals = Math.max(0, count - ids.length);
   if (!approvals) return { questions: ids, approvals, approvalIds: [] };
@@ -1066,7 +1064,7 @@ async function requests(flags) {
   const pending = await pendingOf(session, threadId, t);
   const questions = [];
   for (const requestId of pending.questions) {
-    const q = await session.call("t3_pending_request_read", { threadId, requestId });
+    const q = await session.call("t3_pending_request", { action: "read", threadId, requestId });
     questions.push({ requestId, questions: q?.questions ?? [] });
   }
   return { ok: true, threadId, pendingRequestCount: t.pendingRequestCount ?? 0, questions, approvals: pending.approvals, signature: pendingSignature(pending) };
@@ -1084,7 +1082,7 @@ async function respond(flags) {
   }
   if (!answers || typeof answers !== "object" || Array.isArray(answers)) usage("--answers-file must hold a JSON object keyed by question id");
   const { session } = await verifiedSession(flags);
-  await session.call("t3_pending_request_respond", { threadId, requestId, answers });
+  await session.call("t3_pending_request", { action: "respond", threadId, requestId, answers });
   return { ok: true, threadId, requestId };
 }
 
