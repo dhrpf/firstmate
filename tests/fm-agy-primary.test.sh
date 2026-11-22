@@ -388,6 +388,13 @@ test_turnend_guard_agy_fleet_empty_and_healthy_close() {
   make_healthy_watcher "$dir" "$$"
   out=$(run_agy_stop "$dir" "$payload")
   assert_equals "{}" "$out" "a non-actionable close beside a healthy watcher must return {}"
+
+  dir=$(make_primary_dir "$TMP_ROOT/stop-t3code-standdown")
+  : > "$dir/state/task1.meta"
+  write_arm_fixture "$dir" actionable
+  out=$(T3CODE_THREAD_ID="test-t3-thread" run_agy_stop "$dir" "$payload")
+  assert_equals "{}" "$out" "T3 Code hosted Antigravity must stand down with {} instead of parking synchronously"
+  [ ! -e "$dir/state/arm-ran" ] || fail "T3 Code hosted Antigravity must not start fm-watch-arm.sh in the Stop hook"
   [ ! -e "$dir/state/.turnend-blocks" ] || fail "a healthy close must reset state/.turnend-blocks"
   pass "fm-turnend-guard-agy: returns {} when the fleet is empty or a healthy watcher owns the home"
 }

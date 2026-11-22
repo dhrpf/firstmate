@@ -39,7 +39,7 @@ FM_HARNESS_RE='claude|codex|opencode|grok|kimi|^pi$|^pi-signed$|^omp$|^agy$|^ant
 # FM_HARNESS_RE. Used only for the stricter path evidence below, where the
 # loose regex would also match ordinary firstmate paths such as
 # bin/fm-claude-stop-autoarm.sh.
-FM_HARNESS_NAMES=(claude codex opencode grok kimi pi-signed pi omp agy)
+FM_HARNESS_NAMES=(claude codex opencode grok kimi pi-signed pi omp agy antigravity)
 
 # Print the exact harness name carried by executable path $1 - its own basename
 # or any directory component - or return 1.

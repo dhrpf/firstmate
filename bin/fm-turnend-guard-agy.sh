@@ -97,6 +97,13 @@ fi
 # Away mode owns the watcher and its own triage; never park and never wake.
 [ -e "$STATE/.afk" ] && allow_stop
 
+# Inside T3 Code (antigravity-acp), a synchronous Stop-hook park keeps the
+# provider turn open, traps follow-up user messages in Steer, and hits T3
+# Code's 15-minute silence timeout. Stand down unless explicitly opted in.
+if [ -n "${T3CODE_THREAD_ID:-}" ] && [ "${FM_AGY_ALLOW_T3_PARK:-0}" != "1" ]; then
+  allow_stop
+fi
+
 # The ceiling bounds hook-driven turns. Reaching it while supervision is still
 # needed is told once, loudly, instead of supervision going quiet unannounced.
 if [ -n "$EXEC_NUM" ] && [ "$EXEC_NUM" -ge "$LOOP_CEILING" ]; then
