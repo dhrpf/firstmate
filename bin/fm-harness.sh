@@ -254,7 +254,7 @@ harness_process_verdict() {  # <pid>
     # carries no AGY_* or ANTIGRAVITY_* variable; AGENT=1 seen there is an
     # inherited launcher value, not an agy identity), so like muse it is
     # detected by ancestry alone.
-    agy) echo "comm agy"; return ;;
+    agy|antigravity) echo "comm agy"; return ;;
     # polytoken (Polytoken CLI) is a daemon-plus-TUI whose per-session daemon
     # process name is exactly `polytoken` (verified live on 0.8.19: a TUI
     # session's daemon runs as comm `polytoken` at ppid 1, and a shell tool
